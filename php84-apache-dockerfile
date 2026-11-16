@@ -1,0 +1,96 @@
+
+FROM php:8.4-apache
+
+WORKDIR /var/www/html
+
+# Dependências do sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nano \
+    openssh-client \
+    libpq-dev \
+    libfreetype6-dev \
+    libpng-dev \
+    libjpeg62-turbo-dev \
+    libgmp-dev \
+    libmagickwand-dev \
+    libmemcached-dev \
+    libsodium-dev \
+    zlib1g-dev \
+    libzip-dev \
+    libicu-dev \
+    libxml2-dev \
+    libldap2-dev \
+    libonig-dev \
+    libcurl4-openssl-dev \
+    git \
+    unzip \
+    subversion \
+    ca-certificates \
+    curl \
+    $PHPIZE_DEPS \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# PostgreSQL, MySQL e extensões PHP nativas
+RUN docker-php-ext-install -j"$(nproc)" \
+    pdo_pgsql \
+    pdo_mysql \
+    mysqli \
+    opcache \
+    exif \
+    intl \
+    soap \
+    gmp \
+    zip \
+    xml \
+    gd \
+    ldap
+
+# Configuração do GD
+RUN docker-php-ext-configure gd \
+    --with-freetype \
+    --with-jpeg
+
+# Configuração do LDAP
+RUN docker-php-ext-configure ldap \
+    --with-libdir=lib/x86_64-linux-gnu/
+
+# Extensões PECL
+RUN pecl install imagick \
+    && docker-php-ext-enable imagick
+
+RUN pecl install memcached \
+    && docker-php-ext-enable memcached
+
+RUN pecl install redis \
+    && docker-php-ext-enable redis
+
+# Xdebug: versão compatível com PHP 8.4
+RUN pecl install xdebug-3.5.3 \
+    && docker-php-ext-enable xdebug
+
+COPY ./php-xdebug.ini $PHP_INI_DIR/conf.d/php-xdebug.ini
+
+# Ferramentas PHP
+RUN curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
+    -o /usr/local/bin/wp \
+    && chmod +x /usr/local/bin/wp
+
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+
+# Certificado SSL autoassinado para desenvolvimento
+RUN openssl req -x509 -nodes -days 365 \
+    -newkey rsa:2048 \
+    -keyout /etc/ssl/private/ssl-cert-snakeoil.key \
+    -out /etc/ssl/certs/ssl-cert-snakeoil.pem \
+    -subj "/C=AT/ST=Vienna/L=Vienna/O=Security/OU=Development/CN=example.com"
+
+# Apache
+RUN a2enmod ssl rewrite \
+    && a2ensite default-ssl
+
+COPY ./php.ini /usr/local/etc/php/php.ini
+
+COPY rest.conf /etc/apache2/sites-available/000-default.conf
+
+EXPOSE 80 443

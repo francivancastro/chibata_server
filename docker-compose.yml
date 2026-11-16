@@ -1,0 +1,39 @@
+services:
+  apache:
+    build:
+      dockerfile: php84-apache-dockerfile
+      context: .
+    image: francivan/unifi_auth
+    container_name: unifi_project
+    restart: always
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./html:/var/www/html
+    depends_on:
+      - mysqldb
+    links:
+      - mysqldb
+
+  mysqldb:
+    container_name: unifi_db
+    image: mysql:5.7
+    restart: always
+    ports:
+      - '3307:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: unifi_db
+      TZ: America/Belem
+    volumes:
+      - "./volumes/db/unifi_db:/var/lib/mysql"
+    ulimits:
+      nofile: # Fix memory leak issue on some systems when LimitCORE=infinity (containerd)
+        soft: 1048576
+        hard: 1048576
+  redis-server:
+    container_name: redis
+    image: 'redis'
+    ports:
+      - "6379:6379"
+
