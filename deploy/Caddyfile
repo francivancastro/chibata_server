@@ -1,0 +1,12 @@
+flexbot.pro {
+	encode gzip
+	reverse_proxy apache:80
+}
+
+www.flexbot.pro {
+	redir https://flexbot.pro{uri} permanent
+}
+
+zap.flexbot.pro {
+	reverse_proxy evolution:8080
+}

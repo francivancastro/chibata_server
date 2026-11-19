@@ -1,0 +1,82 @@
+# Produção (VPS). Só o Caddy publica portas; MySQL e Redis ficam na rede interna.
+services:
+  caddy:
+    image: caddy:2.10
+    restart: always
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - apache
+
+  apache:
+    build:
+      context: .
+      dockerfile: php84-apache-dockerfile
+    restart: always
+    volumes:
+      - ./html:/var/www/html
+      - ./php-prod.ini:/usr/local/etc/php/conf.d/zz-prod.ini:ro
+    depends_on:
+      - mysqldb
+      - redis-server
+
+  mysqldb:
+    image: mysql:5.7
+    restart: always
+    environment:
+      # Vem de /opt/chibata/.env (fora do git); precisa bater com a senha do backend.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?defina MYSQL_ROOT_PASSWORD em /opt/chibata/.env}
+      TZ: America/Belem
+    volumes:
+      - db_data:/var/lib/mysql
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+
+  redis-server:
+    image: redis:7
+    restart: always
+
+  # WhatsApp (Evolution API 2.3.7, mesmo digest documentado em backend/docs/whatsapp-preparacao.md).
+  # Segredos vêm de /opt/chibata/.env (MYSQL_ROOT_PASSWORD, EVOLUTION_API_KEY, EVOLUTION_PG_PASSWORD), fora do git.
+  evolution:
+    image: evoapicloud/evolution-api@sha256:966625532d9076a2381e973a271307d107e6f070450de3abeeea8bd18be07252
+    restart: always
+    environment:
+      SERVER_URL: https://zap.flexbot.pro
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_PG_PASSWORD}@evolution-db:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_flexbot
+      CACHE_REDIS_ENABLED: 'true'
+      CACHE_REDIS_URI: redis://redis-server:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_LOCAL_ENABLED: 'false'
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      - evolution-db
+      - redis-server
+
+  evolution-db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_PG_PASSWORD}
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_pg:/var/lib/postgresql/data
+
+volumes:
+  evolution_instances:
+  evolution_pg:
+  caddy_data:
+  caddy_config:
+  db_data:
